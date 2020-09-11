@@ -5,22 +5,17 @@
 import argparse     # Para tratar os parâmetros da linha de comando
 import x3d          # Faz a leitura do arquivo X3D, gera o grafo de cena e faz traversal
 import interface    # Janela de visualização baseada no Matplotlib
+from render.point import Point
+from render.line import Line
+from render.triangle import Triangle
 import gpu          # Simula os recursos de uma GPU
 
-def polypoint2D(point, color):
-    """ Função usada para renderizar Polypoint2D. """
-    gpu.GPU.set_pixel(3, 1, 255, 0, 0) # altera um pixel da imagem
-    # cuidado com as cores, o X3D especifica de (0,1) e o Framebuffer de (0,255)
 
-def polyline2D(lineSegments, color):
-    """ Função usada para renderizar Polyline2D. """
-    x = gpu.GPU.width//2
-    y = gpu.GPU.height//2
-    gpu.GPU.set_pixel(x, y, 255, 0, 0) # altera um pixel da imagem
+LARGURA = 30
+ALTURA = 20
 
 def triangleSet2D(vertices, color):
-    """ Função usada para renderizar TriangleSet2D. """
-    gpu.GPU.set_pixel(24, 8, 255, 255, 0) # altera um pixel da imagem
+    Triangle(vertices, color).render()
 
 def triangleSet(point, color):
     """ Função usada para renderizar TriangleSet. """
@@ -185,8 +180,8 @@ if __name__ == '__main__':
     scene.set_resolution(width, height)
 
     # funções que irão fazer o rendering
-    x3d.X3D.render["Polypoint2D"] = polypoint2D
-    x3d.X3D.render["Polyline2D"] = polyline2D
+    x3d.X3D.render["Polypoint2D"] = call_point
+    x3d.X3D.render["Polyline2D"] = call_line
     x3d.X3D.render["TriangleSet2D"] = triangleSet2D
     x3d.X3D.render["TriangleSet"] = triangleSet
     x3d.X3D.render["Viewpoint"] = viewpoint
