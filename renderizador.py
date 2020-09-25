@@ -5,158 +5,181 @@
 import argparse     # Para tratar os parâmetros da linha de comando
 import x3d          # Faz a leitura do arquivo X3D, gera o grafo de cena e faz traversal
 import interface    # Janela de visualização baseada no Matplotlib
+import gpu          # Simula os recursos de uma GPU
+
+from numpy import array, empty, dot, concatenate
 from render.point import Point
 from render.line import Line
 from render.triangle import Triangle
-import gpu          # Simula os recursos de uma GPU
+from math import sin, cos, tan
 
+LARGURA = 400
+ALTURA = 200
 
-LARGURA = 30
-ALTURA = 20
+TRANSFORM_STACK = [[[1,0,0,0],[0,1,0,0],[0,0,1,0],[0,0,0,1]]]
+SCREEN_COORDS = array([[LARGURA/2, 0, 0, LARGURA/2],
+                       [0, -ALTURA/2, 0, ALTURA/2],
+                       [0, 0, 1, 0], [0, 0, 0, 1]])
 
-def triangleSet2D(vertices, color):
+def matrix_normalize(matrix):
+    transv_matrix = matrix.T
+    # 3x4 array gen
+    new_mat = empty([3,4])
+    for i in range(len(transv_matrix)):
+        max_val =  transv_matrix[i][0] #start with max = first element
+        for e in transv_matrix[i]:
+            if e > max_val:
+                max_val = e
+        # divide every element of the matrix by the max val
+        new_mat[i] = transv_matrix[i]/max_val # normalization
+    return new_mat.T
+
+def call_point(point, color):
+    Point(point,color).render()
+
+def call_line(lineSegments, color):
+    Line(lineSegments, color).render()
+
+def call_triangle(vertices, color):
     Triangle(vertices, color).render()
 
 def triangleSet(point, color):
-    """ Função usada para renderizar TriangleSet. """
-    # Nessa função você receberá pontos no parâmetro point, esses pontos são uma lista
-    # de pontos x, y, e z sempre na ordem. Assim point[0] é o valor da coordenada x do
-    # primeiro ponto, point[1] o valor y do primeiro ponto, point[2] o valor z da 
-    # coordenada z do primeiro ponto. Já point[3] é a coordenada x do segundo ponto e
-    # assim por diante.
-    # No TriangleSet os triângulos são informados individualmente, assim os três
-    # primeiros pontos definem um triângulo, os três próximos pontos definem um novo
-    # triângulo, e assim por diante.
-    
-    # O print abaixo é só para vocês verificarem o funcionamento, deve ser removido.
-    print("TriangleSet : pontos = {0}".format(point)) # imprime no terminal pontos
+    for i in range(0,len(point),9):
+        # p1
+        p1 = array(point[i:i+3]+[1]).T
+        p1 = dot(TRANSFORM_STACK[-1], p1)
+        # p2
+        p2 = array(point[i+3:i+6]+[1]).T
+        p2 = dot(TRANSFORM_STACK[-1], p2)
+        # p3
+        p3 = array(point[i+6:i+9]+[1]).T
+        p3 = dot(TRANSFORM_STACK[-1], p3)
+
+        normalized_x = dot(SCREEN_COORDS, matrix_normalize(array([p1,p2,p3]).T)).T
+        # normalized array flat and concat to use in the call_triangle function
+        vertices = concatenate((normalized_x[0][0:2],normalized_x[1][0:2],normalized_x[2][0:2]), axis=None)
+        call_triangle(vertices, color)
 
 def viewpoint(position, orientation, fieldOfView):
-    """ Função usada para renderizar (na verdade coletar os dados) de Viewpoint. """
-    # Na função de viewpoint você receberá a posição, orientação e campo de visão da
-    # câmera virtual. Use esses dados para poder calcular e criar a matriz de projeção
-    # perspectiva para poder aplicar nos pontos dos objetos geométricos.
+    close_dist = 0.5
+    far_dist = 100
+    position_matrix = array([[1, 0, 0, -position[0]],
+                             [0, 1, 0, -position[1]],
+                             [0, 0, 1, -position[2]],
+                             [0, 0, 0, 1]])
+    orientation_matrix = array([[1, 0, 0, 0],[0,1,0,0],[0,0,1,0],[0,0,0,1]])
+    if orientation[0]:
+        orientation_matrix[1] = [0, cos(orientation[3]), -sin(orientation[3]), 0]
+        orientation_matrix[2] = [0, sin(orientation[3]), cos(orientation[3]), 0]
 
-    # O print abaixo é só para vocês verificarem o funcionamento, deve ser removido.
-    print("Viewpoint : position = {0}, orientation = {1}, fieldOfView = {2}".format(position, orientation, fieldOfView)) # imprime no terminal
+    elif orientation[1]:
+        orientation_matrix[0] = [cos(orientation[3]), 0, sin(orientation[3]), 0]
+        orientation_matrix[2] = [-sin(orientation[3]), 0, cos(orientation[3]), 0]
+
+    elif orientation[2]:
+        orientation_matrix[0] = [cos(orientation[3]), -sin(orientation[3]), 0, 0]
+        orientation_matrix[1] = [sin(orientation[3]), cos(orientation[3]), 0, 0]
+
+    matrix_view = dot(orientation_matrix, position_matrix)
+    aspect_ratio = LARGURA/ALTURA
+    #positions
+    # top = -bottom
+    top = close_dist * tan(fieldOfView)
+    bottom = -top
+    # right = -left
+    right = top*aspect_ratio
+    left = -right
+
+    perspective_matrix = array([[close_dist / right, 0, 0, 0],
+                                [0, close_dist / top, 0, 0],
+                                [0, 0, -(far_dist+close_dist) / (far_dist-close_dist),
+                                 -(2*far_dist*close_dist) / (far_dist-close_dist)],
+                                  [0, 0, -1, 0]])
+    TRANSFORM_STACK.append(dot(matrix_view, TRANSFORM_STACK[-1]))
+    TRANSFORM_STACK.append(dot(perspective_matrix, TRANSFORM_STACK[-1]))
+
+
 
 def transform(translation, scale, rotation):
-    """ Função usada para renderizar (na verdade coletar os dados) de Transform. """
-    # A função transform será chamada quando se entrar em um nó X3D do tipo Transform
-    # do grafo de cena. Os valores passados são a escala em um vetor [x, y, z]
-    # indicando a escala em cada direção, a translação [x, y, z] nas respectivas
-    # coordenadas e finalmente a rotação por [x, y, z, t] sendo definida pela rotação
-    # do objeto ao redor do eixo x, y, z por t radianos, seguindo a regra da mão direita.
-    # Quando se entrar em um nó transform se deverá salvar a matriz de transformação dos
-    # modelos do mundo em alguma estrutura de pilha.
+    angle = rotation[3]
+    translation_matrix = array([[1, 0, 0, translation[0]],
+                                [0, 1, 0, translation[1]],
+                                [0, 0, 1, translation[2]],
+                                [0, 0, 0, 1]])
+    scale_matrix = array([[scale[0], 0, 0, 0],
+                          [0, scale[1], 0, 0],
+                          [0, 0, scale[2], 0],
+                          [0, 0, 0, 1]])
+    if rotation[0]:
+        rotation_matrix = array([[1, 0, 0, 0],
+                                 [0, cos(angle), -sin(angle), 0],
+                                 [0, sin(angle), cos(angle), 0],
+                                 [0, 0, 0, 1]])
+    elif rotation[1]:
+        rotation_matrix = array([[cos(angle), 0, sin(angle), 0],
+                                 [0, 1, 0, 0],
+                                 [-sin(angle), 0, cos(angle), 0],
+                                 [0, 0, 0, 1]])
+    elif rotation[2]:
+        rotation_matrix = array([[cos(angle), -sin(angle), 0, 0],
+                                 [sin(angle), cos(angle), 0, 0],
+                                 [0, 0, 1 ,0],
+                                 [0, 0, 0, 1]])
 
-    # O print abaixo é só para vocês verificarem o funcionamento, deve ser removido.
-    print("Transform : ", end = '')
-    if translation:
-        print("translation = {0} ".format(translation), end = '') # imprime no terminal
-    if scale:
-        print("scale = {0} ".format(scale), end = '') # imprime no terminal
-    if rotation:
-        print("rotation = {0} ".format(rotation), end = '') # imprime no terminal
-    print("")
+    m = dot(dot(translation_matrix, scale_matrix), rotation_matrix)
+    TRANSFORM_STACK.append(dot(TRANSFORM_STACK[-1], m))
 
 def _transform():
-    """ Função usada para renderizar (na verdade coletar os dados) de Transform. """
-    # A função _transform será chamada quando se sair em um nó X3D do tipo Transform do
-    # grafo de cena. Não são passados valores, porém quando se sai de um nó transform se
-    # deverá recuperar a matriz de transformação dos modelos do mundo da estrutura de
-    # pilha implementada.
-
-    # O print abaixo é só para vocês verificarem o funcionamento, deve ser removido.
-    print("Saindo de Transform")
+    TRANSFORM_STACK.pop()
 
 def triangleStripSet(point, stripCount, color):
-    """ Função usada para renderizar TriangleStripSet. """
-    # A função triangleStripSet é usada para desenhar tiras de triângulos interconectados,
-    # você receberá as coordenadas dos pontos no parâmetro point, esses pontos são uma
-    # lista de pontos x, y, e z sempre na ordem. Assim point[0] é o valor da coordenada x
-    # do primeiro ponto, point[1] o valor y do primeiro ponto, point[2] o valor z da
-    # coordenada z do primeiro ponto. Já point[3] é a coordenada x do segundo ponto e assim
-    # por diante. No TriangleStripSet a quantidade de vértices a serem usados é informado
-    # em uma lista chamada stripCount (perceba que é uma lista).
+    p_idx=0
+    for _ in range(int(stripCount[0]-2)):
+        point1=point[p_idx:p_idx+3]
+        point2=point[p_idx+3:p_idx+6]
+        point3=point[p_idx+6:p_idx+9]
+        
+        points=point1+point2+point3
+        p_idx+=3
 
-    # O print abaixo é só para vocês verificarem o funcionamento, deve ser removido.
-    print("TriangleStripSet : pontos = {0} ".format(point), end = '') # imprime no terminal pontos
-    for i, strip in enumerate(stripCount):
-        print("strip[{0}] = {1} ".format(i, strip), end = '') # imprime no terminal
-    print("")
+        triangleSet(points,color)
 
 def indexedTriangleStripSet(point, index, color):
-    """ Função usada para renderizar IndexedTriangleStripSet. """
-    # A função indexedTriangleStripSet é usada para desenhar tiras de triângulos
-    # interconectados, você receberá as coordenadas dos pontos no parâmetro point, esses
-    # pontos são uma lista de pontos x, y, e z sempre na ordem. Assim point[0] é o valor
-    # da coordenada x do primeiro ponto, point[1] o valor y do primeiro ponto, point[2]
-    # o valor z da coordenada z do primeiro ponto. Já point[3] é a coordenada x do
-    # segundo ponto e assim por diante. No IndexedTriangleStripSet uma lista informando
-    # como conectar os vértices é informada em index, o valor -1 indica que a lista
-    # acabou. A ordem de conexão será de 3 em 3 pulando um índice. Por exemplo: o
-    # primeiro triângulo será com os vértices 0, 1 e 2, depois serão os vértices 1, 2 e 3,
-    # depois 2, 3 e 4, e assim por diante.
-    
-    # O print abaixo é só para vocês verificarem o funcionamento, deve ser removido.
-    print("IndexedTriangleStripSet : pontos = {0}, index = {1}".format(point, index)) # imprime no terminal pontos
+    pts = [point[3*i:3*(i+1)] for i in range(len(index))]
+
+    for i in range(len(index)-3):
+        point1 = pts[index[i]]
+        point2 = pts[index[i+1]]
+        point3 = pts[index[i+2]]
+
+        pointList=point1+point2+point3
+        triangleSet(pointList,color)
 
 def box(size, color):
-    """ Função usada para renderizar Boxes. """
-    # A função box é usada para desenhar paralelepípedos na cena. O Box é centrada no
-    # (0, 0, 0) no sistema de coordenadas local e alinhado com os eixos de coordenadas
-    # locais. O argumento size especifica as extensões da caixa ao longo dos eixos X, Y
-    # e Z, respectivamente, e cada valor do tamanho deve ser maior que zero. Para desenha
-    # essa caixa você vai provavelmente querer tesselar ela em triângulos, para isso
-    # encontre os vértices e defina os triângulos.
+    x = size[0] / 2
+    y = size[1] / 2
+    z = size[2] / 2
 
-    # O print abaixo é só para vocês verificarem o funcionamento, deve ser removido.
-    print("Box : size = {0}".format(size)) # imprime no terminal pontos
+    ps = [[-x, y, z], [-x, -y, z],
+          [x, y, z], [x, -y, z],
+          [x, y, -z], [x, -y, -z],
+          [-x, y, -z], [-x, -y, -z]]
 
-def indexedFaceSet(coord, coordIndex, colorPerVertex, color, colorIndex, texCoord, texCoordIndex, current_color, current_texture):
-    """ Função usada para renderizar IndexedFaceSet. """
-    # A função indexedFaceSet é usada para desenhar malhas de triângulos. Ela funciona de
-    # forma muito simular a IndexedTriangleStripSet porém com mais recursos.
-    # Você receberá as coordenadas dos pontos no parâmetro cord, esses
-    # pontos são uma lista de pontos x, y, e z sempre na ordem. Assim point[0] é o valor
-    # da coordenada x do primeiro ponto, point[1] o valor y do primeiro ponto, point[2]
-    # o valor z da coordenada z do primeiro ponto. Já point[3] é a coordenada x do
-    # segundo ponto e assim por diante. No IndexedFaceSet uma lista informando
-    # como conectar os vértices é informada em coordIndex, o valor -1 indica que a lista
-    # acabou. A ordem de conexão será de 3 em 3 pulando um índice. Por exemplo: o
-    # primeiro triângulo será com os vértices 0, 1 e 2, depois serão os vértices 1, 2 e 3,
-    # depois 2, 3 e 4, e assim por diante.
-    # Adicionalmente essa implementação do IndexedFace suport cores por vértices, assim
-    # a se a flag colorPerVertex estiver habilidades, os vértices também possuirão cores
-    # que servem para definir a cor interna dos poligonos, para isso faça um cálculo
-    # baricêntrico de que cor deverá ter aquela posição. Da mesma forma se pode definir uma
-    # textura para o poligono, para isso, use as coordenadas de textura e depois aplique a
-    # cor da textura conforme a posição do mapeamento. Dentro da classe GPU já está
-    # implementadado um método para a leitura de imagens.
-    
-    # O print abaixo é só para vocês verificarem o funcionamento, deve ser removido.
-    print("IndexedFaceSet : ")
-    if coord:
-        print("\tpontos(x, y, z) = {0}, coordIndex = {1}".format(coord, coordIndex)) # imprime no terminal
-    if colorPerVertex:
-        print("\tcores(r, g, b) = {0}, colorIndex = {1}".format(color, colorIndex)) # imprime no terminal
-    if texCoord:
-        print("\tpontos(u, v) = {0}, texCoordIndex = {1}".format(texCoord, texCoordIndex)) # imprime no terminal
-    if(current_texture):
-        image = gpu.GPU.load_texture(current_texture[0])
-        print("\t Matriz com image = {0}".format(image))
-
-# Defina o tamanhã da tela que melhor sirva para perceber a renderização
-LARGURA = 30
-ALTURA = 20
+    # gen points
+    triangleStripSet(ps[0]+ps[1]+ps[2]+ps[3], [4], color)
+    triangleStripSet(ps[1]+ps[7]+ps[3]+ps[5], [4], color)
+    triangleStripSet(ps[2]+ps[3]+ps[4]+ps[5], [4], color)
+    triangleStripSet(ps[4]+ps[5]+ps[6]+ps[7], [4], color)
+    triangleStripSet(ps[6]+ps[7]+ps[0]+ps[1], [4], color)
+    triangleStripSet(ps[6]+ps[0]+ps[4]+ps[2], [4], color)
 
 if __name__ == '__main__':
 
     # Valores padrão da aplicação
     width = LARGURA
     height = ALTURA
-    x3d_file = "exemplo9.x3d"
+
+    x3d_file = "exemplo6.x3d"
     image_file = "tela.png"
 
     # Tratando entrada de parâmetro
@@ -182,7 +205,7 @@ if __name__ == '__main__':
     # funções que irão fazer o rendering
     x3d.X3D.render["Polypoint2D"] = call_point
     x3d.X3D.render["Polyline2D"] = call_line
-    x3d.X3D.render["TriangleSet2D"] = triangleSet2D
+    x3d.X3D.render["TriangleSet2D"] = call_triangle
     x3d.X3D.render["TriangleSet"] = triangleSet
     x3d.X3D.render["Viewpoint"] = viewpoint
     x3d.X3D.render["Transform"] = transform
@@ -190,7 +213,6 @@ if __name__ == '__main__':
     x3d.X3D.render["TriangleStripSet"] = triangleStripSet
     x3d.X3D.render["IndexedTriangleStripSet"] = indexedTriangleStripSet
     x3d.X3D.render["Box"] = box
-    x3d.X3D.render["IndexedFaceSet"] = indexedFaceSet
 
     # Se no modo silencioso não configurar janela de visualização
     if not args.quiet:
