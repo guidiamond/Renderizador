@@ -86,16 +86,15 @@ class Line(BaseRender):
         slope, dx, dy = self.get_slope()
 
 
+
         # step 2
         self.sign_x, self.sign_y = Line.get_signs(dx,dy)
         if (str(slope) == 'h'):
             self.draw_horizontal(dx)
-            return
         elif (str(slope) == 'v'):
             self.draw_vertical(dy)
-            return
         # step 3
-        if (abs(dx) > abs(dy)):
+        elif (abs(dx) > abs(dy)):
             #step 4
             self.bresenham_alg(dx,dy)
         else:
