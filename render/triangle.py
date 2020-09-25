@@ -102,8 +102,3 @@ class Triangle(BaseRender):
             elif (self.points[i][0] < self.points[x_min_max[0]][0]):
                 x_min_max[0] = i
         return [x_min_max, y_min_max]
-        # self.points = list(itertools.combinations(self.points,2))
-        # all_points = []
-        # for i in range(len(self.points)):
-        # all_points.append([self.points[i][0], self.points[i][1]])
-        # self.points = all_points
