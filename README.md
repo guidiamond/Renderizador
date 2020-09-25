@@ -8,6 +8,7 @@ To run the renderer:
 ```python renderizador.py -i <example-file>.x3d```
 
 Render.py function descriptions (in PT-br):
+```python
 def polypoint2D(point, color):
     """ Função usada para renderizar Polypoint2D. """
     gpu.GPU.set_pixel(3, 1, 255, 0, 0) # altera um pixel da imagem
@@ -152,3 +153,4 @@ def indexedFaceSet(coord, coordIndex, colorPerVertex, color, colorIndex, texCoor
     if(current_texture):
         image = gpu.GPU.load_texture(current_texture[0])
         print("\t Matriz com image = {0}".format(image))
+```
