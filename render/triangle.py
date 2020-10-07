@@ -15,30 +15,42 @@ class Triangle(BaseRender):
         p_min_y = self.points[self.y_min_max[0]]  # [x, y]
         p_max_y = self.points[self.y_min_max[1]]  # [x, y]
 
-        # opacity=1
-        # count=0
-        for x in arange(int(p_min_x[0]-1), int(p_max_x[0]+1), 1):
-            opacity=1
-            for y in arange(int(p_min_y[1]-1), int(p_max_y[1]+1), 0.5):
-                if  self.ray_tracing(x,y):
-                    BaseRender.draw_pixel([x,y], self.colors[0])
+        for x in arange(int(p_min_x[0] - 1), int(p_max_x[0] + 1), 1):
+            for y in arange(int(p_min_y[1] - 1), int(p_max_y[1] + 1), 0.5):
+                if self.ray_tracing(x, y):
+                    # if color size is 3 don't apply color interpolation
+                    if len(self.colors[0]) == 3:
+                        BaseRender.draw_pixel([x, y], self.colors[0])
+                        continue
+                    interpolated_colors = self.interpolate_colors(x, y)
+                    BaseRender.draw_pixel([x, y], interpolated_colors)
 
+    def interpolate_colors(self, x, y):
+        a = (
+            -(x - self.points[1][0]) * (self.points[2][1] - self.points[1][1])
+            + (y - self.points[1][1]) * (self.points[2][0] - self.points[1][0])
+        ) / (
+            -(self.points[0][0] - self.points[1][0])
+            * (self.points[2][1] - self.points[1][1])
+            + (self.points[0][1] - self.points[1][1])
+            * (self.points[2][0] - self.points[1][0])
+        )
+        b = (
+            -(x - self.points[2][0]) * (self.points[0][1] - self.points[2][1])
+            + (y - self.points[2][1]) * (self.points[0][0] - self.points[2][0])
+        ) / (
+            -(self.points[1][0] - self.points[2][0])
+            * (self.points[0][1] - self.points[2][1])
+            + (self.points[1][1] - self.points[2][1])
+            * (self.points[0][0] - self.points[2][0])
+        )
+        g = 1 - a - b  # alpha + beta + gamma must be one
 
-
-
-        # for x in arange(int(p_min_x[0]), int(p_max_x[0])+1, 1):
-            # for y in arange(int(p_min_y[1]), int(p_max_y[1])+1, 0.25):
-                # print(count)
-                # count+=1
-                # if count == 3:
-                    # print(count)
-                    # if opacity != 0:
-                        # BaseRender.draw_pixel([x,y], [i*opacity for i in self.colors[0]])
-                    # opacity=1
-                    # count=0
-                    # continue
-                # if not self.ray_tracing(x,y):
-                    # opacity-=.25
+        alpha = [i * a for i in self.colors[0][0:3]]
+        beta = [i * b for i in self.colors[0][3:6]]
+        gamma = [i * g for i in self.colors[0][6:9]]
+        new_colors = [sum(i) for i in zip(alpha, beta, gamma)]
+        return new_colors
 
     @staticmethod
     def inside_all(all_combinations, check_point):
@@ -50,7 +62,7 @@ class Triangle(BaseRender):
 
     def ray_tracing(self, x, y):
         # if (self.pointOnBorder(x, y) == True):
-            # return True
+        # return True
 
         n = len(self.points)
         inside = False
@@ -58,13 +70,13 @@ class Triangle(BaseRender):
         p2y = 0.0
         xints = 0.0
         p1x, p1y = self.points[0]
-        for i in range(n+1):
+        for i in range(n + 1):
             p2x, p2y = self.points[i % n]
             if y > min(p1y, p2y):
                 if y <= max(p1y, p2y):
                     if x <= max(p1x, p2x):
                         if p1y != p2y:
-                            xints = (y-p1y)*(p2x-p1x)/(p2y-p1y)+p1x
+                            xints = (y - p1y) * (p2x - p1x) / (p2y - p1y) + p1x
                         if p1x == p2x or x <= xints:
                             inside = not inside
             p1x, p1y = p2x, p2y
@@ -80,25 +92,26 @@ class Triangle(BaseRender):
             v1y = p2y - p1y  # vector for the edge between p1 and p2
             v2x = x - p1x
             v2y = y - p1y  # vector from p1 to the point in question
-            if(v1x * v2y - v1y * v2x == 0):  # if vectors are parallel
-                if(v2x / v1x > 0):  # if vectors are pointing in the same direction
-                    if(v1x * v1x + v1y * v1y >= v2x * v2x + v2y * v2y):  # if v2 is shorter than v1
+            if v1x * v2y - v1y * v2x == 0:  # if vectors are parallel
+                if v2x / v1x > 0:  # if vectors are pointing in the same direction
+                    if (
+                        v1x * v1x + v1y * v1y >= v2x * v2x + v2y * v2y
+                    ):  # if v2 is shorter than v1
                         return True
         return False
 
-  
     def get_min_max(self):
-        x_min_max=[0,0] # [min, max]
-        y_min_max=[0,0] # [min, max]
+        x_min_max = [0, 0]  # [min, max]
+        y_min_max = [0, 0]  # [min, max]
         for i in range(len(self.points)):
-            if (i == 0):
+            if i == 0:
                 y_min_max[1] = i
-            if (self.points[i][1] > self.points[y_min_max[1]][1]):
+            if self.points[i][1] > self.points[y_min_max[1]][1]:
                 y_min_max[1] = i
-            elif (self.points[i][1] < self.points[y_min_max[0]][1]):
+            elif self.points[i][1] < self.points[y_min_max[0]][1]:
                 y_min_max[0] = i
-            if (self.points[i][0] > self.points[x_min_max[1]][0]):
+            if self.points[i][0] > self.points[x_min_max[1]][0]:
                 x_min_max[1] = i
-            elif (self.points[i][0] < self.points[x_min_max[0]][0]):
+            elif self.points[i][0] < self.points[x_min_max[0]][0]:
                 x_min_max[0] = i
         return [x_min_max, y_min_max]

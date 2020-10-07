@@ -1,7 +1,8 @@
 from .base.base import BaseRender
 
+
 class Point(BaseRender):
-    def __init__(self,points,colors):
+    def __init__(self, points, colors):
         super().__init__(points, colors)
 
     def render(self):
