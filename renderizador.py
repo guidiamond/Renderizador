@@ -213,6 +213,9 @@ if __name__ == '__main__':
     x3d.X3D.render["TriangleStripSet"] = triangleStripSet
     x3d.X3D.render["IndexedTriangleStripSet"] = indexedTriangleStripSet
     x3d.X3D.render["Box"] = box
+    x3d.X3D.render["IndexedFaceSet"] = indexedFaceSet
+
+
 
     # Se no modo silencioso não configurar janela de visualização
     if not args.quiet:
